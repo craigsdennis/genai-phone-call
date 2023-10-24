@@ -2,6 +2,10 @@ require("dotenv").config();
 const express = require("express");
 const ExpressWs = require("express-ws");
 
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
+const twilioClient = require('twilio')(accountSid, authToken);
+
 const { TextToSpeechService } = require("./tts-service");
 const { TranscriptionService } = require("./transcription-service");
 
@@ -32,6 +36,8 @@ app.ws("/connection", (ws, req) => {
   ws.on("error", console.error);
   // Filled in from start message
   let streamSid;
+  let callSid;
+  let hangup = false;
 
   const messages = [
     {
@@ -50,7 +56,8 @@ app.ws("/connection", (ws, req) => {
     const msg = JSON.parse(data);
     if (msg.event === "start") {
       streamSid = msg.start.streamSid;
-      console.log(`Starting Media Stream for ${streamSid}`);
+      callSid = msg.start.callSid;
+      console.log(`Starting Media Stream for ${streamSid} on call ${callSid}`);
       const chatCompletion = await chat(messages);
       messages.push(chatCompletion);
       ttsService.generate(chatCompletion.content);
@@ -59,6 +66,21 @@ app.ws("/connection", (ws, req) => {
     } else if (msg.event === "mark") {
       const label = msg.mark.name;
       console.log(`Media completed mark (${msg.sequenceNumber}): ${label}`);
+      // If the hangup flag is set, end call after saying message
+      if (hangup){
+        twilioClient.calls(callSid)
+          .update({status: 'completed'})
+          .then(call => console.log(call.to));
+      }
+      // Generate goodby and set call to end after it has gone on long enough
+      if (messages.length >= 12){
+        console.log("Add goodbye prompt");
+        hangup = true;
+        messages.push({role: "user", content: "Come up with a pithy goodby message. Assume you may be cutting the user off. You can be a little rude"});
+        const chatCompletion = await chat(messages);
+        messages.push(chatCompletion);
+        ttsService.generate(chatCompletion.content);
+      }
     }
   });
 
@@ -68,7 +90,8 @@ app.ws("/connection", (ws, req) => {
     const chatCompletion = await chat(messages);
     messages.push(chatCompletion);
     ttsService.generate(chatCompletion.content);
-    // ttsService.generate(text);
+    console.log(`Messages Length: ${messages.length}`);
+    
   });
 
   ttsService.on("speech", (audio, label) => {
