@@ -89,7 +89,7 @@ app.ws("/connection", (ws, req) => {
           .then(call => console.log(call.to));
       }
       // Generate goodby and set call to end after convo limit reached
-      if (userChatCount >= CONFIG.user_chat_count){
+      else if (userChatCount >= CONFIG.user_chat_count){
         console.log("Add goodbye prompt");
         // The next time "mark" is sent end the call 
         hangup = true;
@@ -144,7 +144,6 @@ async function chat(messages) {
     messages: messages,
     model: "gpt-3.5-turbo",
   });
-  console.log(chatCompletion.choices[0]);
   return chatCompletion.choices[0].message;
 }
 
