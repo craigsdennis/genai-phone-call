@@ -5,6 +5,12 @@ const ExpressWs = require("express-ws");
 const { TextToSpeechService } = require("./tts-service");
 const { TranscriptionService } = require("./transcription-service");
 
+const { OpenAI } = require("openai");
+
+const openai = new OpenAI({
+  apiKey: process.env["OPENAI_API_KEY"],
+});
+
 const app = express();
 ExpressWs(app);
 
@@ -27,26 +33,42 @@ app.ws("/connection", (ws, req) => {
   // Filled in from start message
   let streamSid;
 
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You are a monster that lives in Denver, Colorado. Your current body looks like a white and gray house. You have two eyes, large teeth, and a red tongue. You are scary but in a silly way. Your response should pithy and no more than 16 words.",
+    },
+    { role: "user", content: "Come up with a pithy greeting" },
+  ];
+
   const transcriptionService = new TranscriptionService();
   const ttsService = new TextToSpeechService({});
 
   // Incoming from MediaStream
-  ws.on("message", function message(data) {
+  ws.on("message", async function message(data) {
     const msg = JSON.parse(data);
     if (msg.event === "start") {
       streamSid = msg.start.streamSid;
       console.log(`Starting Media Stream for ${streamSid}`);
+      const chatCompletion = await chat(messages);
+      messages.push(chatCompletion);
+      ttsService.generate(chatCompletion.content);
     } else if (msg.event === "media") {
       transcriptionService.send(msg.media.payload);
     } else if (msg.event === "mark") {
       const label = msg.mark.name;
-      console.log(`Media completed mark (${msg.sequenceNumber}): ${label}`)
+      console.log(`Media completed mark (${msg.sequenceNumber}): ${label}`);
     }
   });
 
-  transcriptionService.on("transcription", (text) => {
+  transcriptionService.on("transcription", async (text) => {
     console.log(`Received transcription: ${text}`);
-    ttsService.generate(text);
+    messages.push({ role: "user", content: text });
+    const chatCompletion = await chat(messages);
+    messages.push(chatCompletion);
+    ttsService.generate(chatCompletion.content);
+    // ttsService.generate(text);
   });
 
   ttsService.on("speech", (audio, label) => {
@@ -66,12 +88,21 @@ app.ws("/connection", (ws, req) => {
         streamSid,
         event: "mark",
         mark: {
-          name: label
-        }
+          name: label,
+        },
       })
-    )
+    );
   });
 });
+
+async function chat(messages) {
+  const chatCompletion = await openai.chat.completions.create({
+    messages: messages,
+    model: "gpt-3.5-turbo",
+  });
+  console.log(chatCompletion.choices[0]);
+  return chatCompletion.choices[0].message;
+}
 
 app.listen(PORT);
 console.log(`Server running on port ${PORT}`);
