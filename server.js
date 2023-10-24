@@ -15,6 +15,8 @@ const openai = new OpenAI({
   apiKey: process.env["OPENAI_API_KEY"],
 });
 
+const CONFIG = require("./config.json");
+
 const app = express();
 ExpressWs(app);
 
@@ -38,14 +40,14 @@ app.ws("/connection", (ws, req) => {
   let streamSid;
   let callSid;
   let hangup = false;
+  let userChatCount = 0;
 
   const messages = [
     {
       role: "system",
-      content:
-        "You are a monster that lives in Denver, Colorado. Your current body looks like a white and gray house. You have two eyes, large teeth, and a red tongue. You are scary but in a silly way. Your response should pithy and no more than 16 words.",
+      content:CONFIG.system_prompt
     },
-    { role: "user", content: "Come up with a pithy greeting" },
+    { role: "user", content: CONFIG.greetings_prompt },
   ];
 
   const transcriptionService = new TranscriptionService();
@@ -73,10 +75,10 @@ app.ws("/connection", (ws, req) => {
           .then(call => console.log(call.to));
       }
       // Generate goodby and set call to end after it has gone on long enough
-      if (messages.length >= 12){
+      if (userChatCount >= CONFIG.user_chat_count){
         console.log("Add goodbye prompt");
         hangup = true;
-        messages.push({role: "user", content: "Come up with a pithy goodby message. Assume you may be cutting the user off. You can be a little rude"});
+        messages.push({role: "user", content: CONFIG.goodbye_prompt});
         const chatCompletion = await chat(messages);
         messages.push(chatCompletion);
         ttsService.generate(chatCompletion.content);
@@ -87,6 +89,7 @@ app.ws("/connection", (ws, req) => {
   transcriptionService.on("transcription", async (text) => {
     console.log(`Received transcription: ${text}`);
     messages.push({ role: "user", content: text });
+    userChatCount++;
     const chatCompletion = await chat(messages);
     messages.push(chatCompletion);
     ttsService.generate(chatCompletion.content);
