@@ -1,3 +1,5 @@
+> 💡 A more complete & updated version of this demo is available in a [Twilio Open Source Repo](https://github.com/twilio-labs/call-gpt).
+
 # Generative AI Phone Calling
 
 Generative AI is producing a bunch of fun new models for us devs to poke at. Did you know you can use these over the phone?
